@@ -1,23 +1,23 @@
 #!/bin/bash
 
-# Set base directory
 BASE_DIR="values"
 
 # Loop through all z3.values.yaml files
 find "$BASE_DIR" -type f -name "z3.values.yaml" | while read -r file; do
   echo "Processing: $file"
 
-  # Use awk to duplicate cuat11 to cuat12 for each key block
   awk '
-    /^[^[:space:]]/ { section = $0 } # Remember current top-level key
-    /^\s+cuat11:/ {
+    /^[^[:space:]]/ { section = $0 } # Track the current top-level key
+    /^\s+(cuat11|prod11):/ {
       print
-      sub("cuat11", "cuat12", $0)
-      print
+      duplicate = $0
+      gsub("cuat11", "cuat12", duplicate)
+      gsub("prod11", "prod12", duplicate)
+      print duplicate
       next
     }
     { print }
   ' "$file" > "$file.tmp" && mv "$file.tmp" "$file"
 done
 
-echo "All files updated."
+echo "All files updated with cuat12 and prod12."
