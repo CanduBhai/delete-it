@@ -1,17 +1,20 @@
 #!/bin/bash
 
+# Root directory
 BASE_DIR="values"
+
+# Keys to remove
 REMOVE_KEYS=("cuat11" "prod12")
 
-# Build regex pattern from keys
-pattern=$(printf "%s" "${REMOVE_KEYS[@]}" | sed 's/ /|/g')
+# Combine keys into one regex pattern
+pattern=$(IFS="|"; echo "${REMOVE_KEYS[*]}")
 
-# Loop through all z3.values.yaml files in all subdirectories
+# Find and process all z3.values.yaml files
 find "$BASE_DIR" -type f -name "z3.values.yaml" | while read -r file; do
   echo "🧹 Cleaning $file"
 
-  # Remove lines with matching keys (e.g., cuat11: or prod12:)
-  grep -vE "^[[:space:]]*(${pattern}):" "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+  # Remove lines that begin with optional spaces and contain the keys followed by colon
+  awk -v pattern="^ *(${pattern}):" '!($0 ~ pattern)' "$file" > "$file.tmp" && mv "$file.tmp" "$file"
 done
 
-echo "✅ Done! Removed lines with keys: ${REMOVE_KEYS[*]}"
+echo "✅ Done! Removed entries for: ${REMOVE_KEYS[*]}"
