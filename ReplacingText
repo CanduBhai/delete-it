@@ -1,0 +1,71 @@
+#!/bin/bash
+
+BASE_DIR="values"
+
+# Define cuat → prod mapping
+declare -A cuat_to_prod
+cuat_to_prod["z1.values.yaml"]="cuat1:prod1"
+cuat_to_prod["z2.values.yaml"]="cuat3:prod3"
+cuat_to_prod["z3.values.yaml"]="cuat12:prod11"
+
+find "$BASE_DIR" -type f -name "z*.values.yaml" | while read -r file; do
+  filename=$(basename "$file")
+  mapping=${cuat_to_prod[$filename]}
+
+  if [ -z "$mapping" ]; then
+    echo "❌ No mapping for $filename. Skipping..."
+    continue
+  fi
+
+  cuat_key=${mapping%%:*}
+  prod_key=${mapping##*:}
+
+  echo "🔄 Processing $file: $cuat_key ← $prod_key"
+
+  awk -v cuat="$cuat_key" -v prod="$prod_key" '
+    FNR==NR {
+      if (/^[^[:space:]]/) section=$1
+      if ($1 == prod ":") prod_val[section]=$2
+      next
+    }
+
+    {
+      if (/^[^[:space:]]/) {
+        section = $1
+        found_cuat=0
+        found_prod=0
+      }
+
+      if ($1 == cuat ":") {
+        found_cuat = 1
+        if (prod_val[section] != "")
+          print "  " cuat ": " prod_val[section]
+        next
+      }
+
+      if ($1 == prod ":") {
+        found_prod = 1
+        print
+        next_line = getline next_line_text
+        if (!next_line_text ~ cuat ":") {
+          if (prod_val[section] != "")
+            print "  " cuat ": " prod_val[section]
+          print next_line_text
+          next
+        } else {
+          print next_line_text
+          next
+        }
+      }
+
+      print
+    }
+
+    END {
+      # No special handling needed; done inline
+    }
+
+  ' "$file" "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+done
+
+echo "✅ All files fixed correctly with prod → cuat value propagation."
