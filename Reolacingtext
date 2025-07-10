@@ -1,0 +1,63 @@
+#!/bin/bash
+
+BASE_DIR="values"
+
+# Define the cuat-prod mapping
+declare -A cuat_to_prod
+cuat_to_prod["z1.values.yaml"]="cuat1:prod1"
+cuat_to_prod["z2.values.yaml"]="cuat3:prod3"
+cuat_to_prod["z3.values.yaml"]="cuat12:prod11"
+
+find "$BASE_DIR" -type f -name "z*.values.yaml" | while read -r file; do
+  filename=$(basename "$file")
+  mapping=${cuat_to_prod[$filename]}
+
+  if [ -z "$mapping" ]; then
+    echo "No mapping found for $filename. Skipping..."
+    continue
+  fi
+
+  cuat_key=${mapping%%:*}
+  prod_key=${mapping##*:}
+
+  echo "Processing $file — Ensuring $cuat_key gets value from $prod_key"
+
+  awk -v cuat="$cuat_key" -v prod="$prod_key" '
+    /^[^[:space:]]/ { section = $0; found_cuat=0; found_prod=0 }
+
+    # Track if cuat or prod exists in this section
+    $1 == cuat ":" {
+      found_cuat=1
+      if (prod_val[section] != "")
+        print "  " cuat ": " prod_val[section]
+      next
+    }
+
+    $1 == prod ":" {
+      found_prod=1
+      prod_val[section] = $2
+      print
+      next
+    }
+
+    # If prod line was printed but cuat was missing, insert cuat line
+    found_prod && !found_cuat && $0 !~ /^[[:space:]]/ {
+      print "  " cuat ": " prod_val[section]
+      found_prod=0
+      found_cuat=0
+    }
+
+    { print }
+
+    END {
+      # In case prod was at end of file and cuat missing
+      if (found_prod && !found_cuat) {
+        print "  " cuat ": " prod_val[section]
+      }
+    }
+
+  ' "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+
+done
+
+echo "✅ All files processed. cuat values updated or added from prod."
