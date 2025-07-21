@@ -4,6 +4,27 @@ FOLDERX="folderX"
 VALUES="Values"
 NON_MATCHING=()
 
+# Function to extract 'cuat1' from a given section
+extract_cuat1_value() {
+    local section="$1"
+    local file="$2"
+    awk -v section="$section" '
+    BEGIN { found_section=0; val="" }
+    $0 ~ "^"section":" {
+        found_section=1
+        next
+    }
+    /^[^[:space:]]/ && found_section {
+        exit
+    }
+    found_section && $1 ~ /cuat1:/ {
+        # Join fields after the key cuat1:
+        for (i=2; i<=NF; i++) val = val ? val OFS $i : $i
+    }
+    END { print val }
+    ' "$file"
+}
+
 # Loop through each subfolder in folderX
 for xsub in "$FOLDERX"/*; do
     if [[ -d "$xsub" ]]; then
@@ -11,32 +32,29 @@ for xsub in "$FOLDERX"/*; do
         values_file="$xsub/values.yaml"
         corresponding_folder="$VALUES/$foldername"
 
-        # Check if the corresponding folder exists in Values
         if [[ ! -d "$corresponding_folder" ]]; then
             NON_MATCHING+=("$foldername")
             continue
         fi
 
-        # Extract cuat1 values from the YAML file
         if [[ -f "$values_file" ]]; then
-            replicaCount=$(awk '/^replicaCount:/,/^[^ ]/ { if ($1 == "cuat1:") print $2 }' "$values_file")
-            limits_memory=$(awk '/^limits_memory:/,/^[^ ]/ { if ($1 == "cuat1:") print $2 $3 }' "$values_file")
-            request_memory=$(awk '/^request_memory:/,/^[^ ]/ { if ($1 == "cuat1:") print $2 $3 }' "$values_file")
+            rc_val=$(extract_cuat1_value "replicaCount" "$values_file")
+            lm_val=$(extract_cuat1_value "limits_memory" "$values_file")
+            rm_val=$(extract_cuat1_value "request_memory" "$values_file")
 
-            # Default values if not found
-            replicaCount=${replicaCount:-0}
-            limits_memory=${limits_memory:-"1 Gi"}
-            request_memory=${request_memory:-"1 Gi"}
+            # Apply defaults if not found
+            rc_val=${rc_val:-0}
+            lm_val=${lm_val:-"1 Gi"}
+            rm_val=${rm_val:-"1 Gi"}
 
-            # Create the new file
             output_file="$corresponding_folder/cuat12dr.values.yaml"
             cat <<EOF > "$output_file"
 replicaCount:
-  cuat12dr: $replicaCount
+  cuat12dr: $rc_val
 limits_memory:
-  cuat12dr: $limits_memory
+  cuat12dr: $lm_val
 request_memory:
-  cuat12dr: $request_memory
+  cuat12dr: $rm_val
 EOF
             echo "Generated $output_file"
         else
@@ -45,7 +63,7 @@ EOF
     fi
 done
 
-# Print non-matching folders
+# Report non-matching folders
 if [[ ${#NON_MATCHING[@]} -gt 0 ]]; then
     echo "Non-matching folders (present in folderX but missing in Values):"
     for folder in "${NON_MATCHING[@]}"; do
