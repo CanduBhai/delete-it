@@ -1,0 +1,56 @@
+#!/bin/bash
+
+FOLDERX="folderX"
+VALUES="Values"
+NON_MATCHING=()
+
+# Loop through each subfolder in folderX
+for xsub in "$FOLDERX"/*; do
+    if [[ -d "$xsub" ]]; then
+        foldername=$(basename "$xsub")
+        values_file="$xsub/values.yaml"
+        corresponding_folder="$VALUES/$foldername"
+
+        # Check if the corresponding folder exists in Values
+        if [[ ! -d "$corresponding_folder" ]]; then
+            NON_MATCHING+=("$foldername")
+            continue
+        fi
+
+        # Extract cuat1 values from the YAML file
+        if [[ -f "$values_file" ]]; then
+            replicaCount=$(awk '/^replicaCount:/,/^[^ ]/ { if ($1 == "cuat1:") print $2 }' "$values_file")
+            limits_memory=$(awk '/^limits_memory:/,/^[^ ]/ { if ($1 == "cuat1:") print $2 $3 }' "$values_file")
+            request_memory=$(awk '/^request_memory:/,/^[^ ]/ { if ($1 == "cuat1:") print $2 $3 }' "$values_file")
+
+            # Default values if not found
+            replicaCount=${replicaCount:-0}
+            limits_memory=${limits_memory:-"1 Gi"}
+            request_memory=${request_memory:-"1 Gi"}
+
+            # Create the new file
+            output_file="$corresponding_folder/cuat12dr.values.yaml"
+            cat <<EOF > "$output_file"
+replicaCount:
+  cuat12dr: $replicaCount
+limits_memory:
+  cuat12dr: $limits_memory
+request_memory:
+  cuat12dr: $request_memory
+EOF
+            echo "Generated $output_file"
+        else
+            echo "Missing file: $values_file"
+        fi
+    fi
+done
+
+# Print non-matching folders
+if [[ ${#NON_MATCHING[@]} -gt 0 ]]; then
+    echo "Non-matching folders (present in folderX but missing in Values):"
+    for folder in "${NON_MATCHING[@]}"; do
+        echo "  - $folder"
+    done
+else
+    echo "All folders matched successfully."
+fi
